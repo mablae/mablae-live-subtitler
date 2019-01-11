@@ -18,6 +18,7 @@ using CommandLine;
 using Google.Cloud.Speech.V1;
 using NAudio.Wave;
 using System;
+using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -31,12 +32,20 @@ namespace Mablae.LiveSubtitler
     {
         [Option('l', "locale", HelpText = "Locale to use", Default = "de")]
         public string Locale { get; set; } = "de";
-        
+
         [Option('t', "targetLanguage", HelpText = "Translation into this", Default = "de")]
         public string TargetLanguage { get; set; } = "de";
 
         [Option('s', "seconds", HelpText = "Number of seconds to listen for.", Default = 30)]
         public int Seconds { get; set; } = 30;
+
+        [Option('w', "wave-in-device-number", HelpText = "Which audio device should be recorded?", Default = 0)]
+        public int WaveInDeviceNumber { get; set; } = 30;
+    }
+
+    [Verb("list", HelpText = "List all audio input devices")]
+    class ListOptions
+    {
     }
 
 
@@ -62,26 +71,50 @@ namespace Mablae.LiveSubtitler
 
             return 0;
         }
-        
-        
-        static async Task<object> StreamingMicRecognizeAsync(string locale, int seconds)
+
+        static async Task<int> ListDevices()
         {
+            int waveInDevices = WaveIn.DeviceCount;
+            for (int waveInDevice = 0; waveInDevice < waveInDevices; waveInDevice++)
+            {
+                WaveInCapabilities deviceInfo = WaveIn.GetCapabilities(waveInDevice);
+                
+                
+                
+                Console.WriteLine("Device {0}: {1}, {2} channels", waveInDevice, deviceInfo.ProductName,
+                    deviceInfo.Channels);
+            }
 
+
+            return 0;
+        }
+
+
+        static async Task<object> StreamingMicRecognizeAsync(string locale, int seconds, int waveInDeviceNumber = 0)
+        {
+            waveIn = new NAudio.Wave.WaveInEvent();
+            waveIn.DeviceNumber = waveInDeviceNumber;
+            waveIn.WaveFormat = waveFormat;
+
+            waveIn.StartRecording();
+
+            Console.WriteLine(String.Format("Recording has been started on {0}",
+                WaveIn.GetCapabilities(waveInDeviceNumber).ProductName), Color.Lime);
             var loadDataTasks = new Task[]
-                {
-                    Task.Run(async () =>  await Loop(locale, seconds)),
-                    Task.Run(async () =>  await ndiRenderer.Run())
-                };
+            {
+                Task.Run(async () => await Loop(locale, seconds)),
+                Task.Run(async () => await ndiRenderer.Run())
+            };
 
-                try
-                {
-                    await Task.WhenAll(loadDataTasks);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
-                }
-               
+            try
+            {
+                await Task.WhenAll(loadDataTasks);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+
             waveIn.StopRecording();
             Console.WriteLine("exited gracefully");
 
@@ -125,66 +158,50 @@ namespace Mablae.LiveSubtitler
                 e.Cancel = true;
                 cancelNdi.Cancel();
                 Program.keepRunning = false;
-                
             };
 
             waveFormat = new NAudio.Wave.WaveFormat(16000, 1);
-            waveIn = new NAudio.Wave.WaveInEvent();
-            waveIn.DeviceNumber = 0;
-            waveIn.WaveFormat = waveFormat;
 
-            outputDevice = new WaveOutEvent();
-
-            //var mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(16000, 1));
-        //    mixer.ReadFully = false;
-         //   mixer.AddMixerInput(new WaveInProvider(waveIn));
-
-       //     outputDevice.Init(mixer);
-        //    outputDevice.Play();
-
-            waveIn.StartRecording();
 
             tokenCancelEarly = new CancellationTokenSource();
 
             transcriber = new Transcriber(waveIn, SpeechClient.Create());
-            
+
             ndiRenderer = new NdiRenderer(cancelNdi.Token);
             var sourceLanguage = "en";
             var targetLanguage = "en";
             Parser.Default.ParseArguments<ListenOptions>(args)
-                .WithParsed<ListenOptions>(o => { sourceLanguage = o.Locale;
+                .WithParsed<ListenOptions>(o =>
+                {
+                    sourceLanguage = o.Locale;
                     targetLanguage = o.TargetLanguage;
                 });
-            
-            
+
+
             Translator translator = new Translator();
             translator.TranslationReceived += delegate(object sender, TranslationReceivedEventArgs eventArgs)
-                {
-                    ndiRenderer.TranslatedText = eventArgs.Translation;
-                };
-            
+            {
+                ndiRenderer.TranslatedText = eventArgs.Translation;
+            };
+
             transcriber.PartialTranscriptionReceived += delegate(object sender, PartialTranscriptionReceivedEventArgs e)
+            {
+                ndiRenderer.PartialText = e.Transcription;
+            };
+            transcriber.CompleteTranscriptionReceived +=
+                delegate(object sender, CompleteTranscriptionReceivedEventArgs e)
                 {
                     ndiRenderer.PartialText = e.Transcription;
-                    
-                };
-            transcriber.CompleteTranscriptionReceived += delegate(object sender, CompleteTranscriptionReceivedEventArgs e)
-                {
-                    ndiRenderer.PartialText = e.Transcription;
-                    Task.Run(async() => await translator.Translate(e.Transcription, sourceLanguage, targetLanguage));
+                    Task.Run(async () => await translator.Translate(e.Transcription, sourceLanguage, targetLanguage));
                 };
 
             return (int) Parser.Default.ParseArguments<
-                ListenOptions
+                ListenOptions, ListOptions
             >(args).MapResult(
-                (ListenOptions opts) => StreamingMicRecognizeAsync(opts.Locale, opts.Seconds).Result,
+                (ListenOptions opts) =>
+                    StreamingMicRecognizeAsync(opts.Locale, opts.Seconds, opts.WaveInDeviceNumber).Result,
+                (ListOptions opts) => ListDevices().Result,
                 errs => 0);
         }
-        
-        
-     
     }
-    
-    
-   
 }
