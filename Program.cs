@@ -43,7 +43,7 @@ namespace Mablae.LiveSubtitler
         public int WaveInDeviceNumber { get; set; } = 30;
     }
 
-    [Verb("list", HelpText = "List all audio input devices")]
+    [Verb("list-devices", HelpText = "List all audio input devices")]
     class ListOptions
     {
     }
