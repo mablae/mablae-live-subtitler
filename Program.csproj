@@ -8,8 +8,10 @@
     <IsPackable>false</IsPackable>
     <PackageId>Mablae.LiveSubtitler</PackageId>
     <Authors>Mablae.LiveSubtitler</Authors>
-	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-	<Standalone>true</Standalone>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Standalone>true</Standalone>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -36,7 +38,7 @@
 
   <ItemGroup>
     <Reference Include="NDILibDotNet2">
-      <HintPath>..\..\..\..\..\..\..\Program Files\NewTek\NewTek NDI 3.8 SDK\Examples\Bin\AnyCPU\Release\NDILibDotNet2.dll</HintPath>
+      <HintPath>C:\Program Files\NewTek\NewTek NDI 3.8 SDK\Examples\Bin\AnyCPU\Release\NDILibDotNet2.dll</HintPath>
     </Reference>
   </ItemGroup>
   
