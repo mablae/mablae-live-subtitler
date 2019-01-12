@@ -17,21 +17,15 @@ namespace Mablae.LiveSubtitler
 
         public Transcriber(WaveInEvent waveInEvent, SpeechClient speechClient)
         {
-            waveIn =
-                waveInEvent;
+            this.waveIn = waveInEvent;
             this.speechClient = speechClient;
         } 
         
         public async Task<int> Run(int seconds, string locale)
         {
             tokenCancelEarly = new CancellationTokenSource();
-
-            
+           
             var streamingCall = speechClient.StreamingRecognize();
-
-
-  
-                
 
             // Write the initial request with the config.
              await streamingCall.WriteAsync(

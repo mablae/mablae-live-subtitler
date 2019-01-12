@@ -40,7 +40,7 @@ namespace Mablae.LiveSubtitler
         public int Seconds { get; set; } = 30;
 
         [Option('w', "wave-in-device-number", HelpText = "Which audio device should be recorded?", Default = 0)]
-        public int WaveInDeviceNumber { get; set; } = 30;
+        public int WaveInDeviceNumber { get; set; } = 0;
     }
 
     [Verb("list-devices", HelpText = "List all audio input devices")]
@@ -92,14 +92,15 @@ namespace Mablae.LiveSubtitler
 
         static async Task<object> StreamingMicRecognizeAsync(string locale, int seconds, int waveInDeviceNumber = 0)
         {
-            waveIn = new NAudio.Wave.WaveInEvent();
+          
             waveIn.DeviceNumber = waveInDeviceNumber;
             waveIn.WaveFormat = waveFormat;
-
+            
             waveIn.StartRecording();
 
             Console.WriteLine(String.Format("Recording has been started on {0}",
                 WaveIn.GetCapabilities(waveInDeviceNumber).ProductName), Color.Lime);
+            
             var loadDataTasks = new Task[]
             {
                 Task.Run(async () => await Loop(locale, seconds)),
@@ -125,18 +126,14 @@ namespace Mablae.LiveSubtitler
         public static void SetupDI()
         {
             var services = new ServiceCollection();
-
             var configurationBuilder = new ConfigurationBuilder();
-
 
             configurationBuilder.AddJsonFile("appsettings.json", optional: true);
 
             var configuration = configurationBuilder.Build();
-
             services.AddSingleton<IConfiguration>(configuration);
 
             var provider = services.BuildServiceProvider();
-
             var myConfig = provider.GetService<IConfiguration>();
         }
 
@@ -159,10 +156,8 @@ namespace Mablae.LiveSubtitler
                 cancelNdi.Cancel();
                 Program.keepRunning = false;
             };
-
+            waveIn = new NAudio.Wave.WaveInEvent();
             waveFormat = new NAudio.Wave.WaveFormat(16000, 1);
-
-
             tokenCancelEarly = new CancellationTokenSource();
 
             transcriber = new Transcriber(waveIn, SpeechClient.Create());
@@ -181,19 +176,26 @@ namespace Mablae.LiveSubtitler
             Translator translator = new Translator();
             translator.TranslationReceived += delegate(object sender, TranslationReceivedEventArgs eventArgs)
             {
-                ndiRenderer.TranslatedText = eventArgs.Translation;
+                Task.Run(async() =>
+                {
+                    await ndiRenderer.UpdatePartialText(eventArgs.Translation);
+                });
             };
 
             transcriber.PartialTranscriptionReceived += delegate(object sender, PartialTranscriptionReceivedEventArgs e)
-            {
-                ndiRenderer.PartialText = e.Transcription;
-            };
-            transcriber.CompleteTranscriptionReceived +=
-                delegate(object sender, CompleteTranscriptionReceivedEventArgs e)
                 {
-                    ndiRenderer.PartialText = e.Transcription;
-                    Task.Run(async () => await translator.Translate(e.Transcription, sourceLanguage, targetLanguage));
+                    Task.Run(async() =>
+                    {
+                        await ndiRenderer.UpdatePartialText(e.Transcription);
+                    });
                 };
+            
+            
+            transcriber.CompleteTranscriptionReceived += delegate(object sender, CompleteTranscriptionReceivedEventArgs e)
+            {
+                Task.Run(async() => { await ndiRenderer.UpdatePartialText(e.Transcription); });
+                Task.Run(async () => await translator.Translate(e.Transcription, sourceLanguage, targetLanguage));
+            };
 
             return (int) Parser.Default.ParseArguments<
                 ListenOptions, ListOptions
