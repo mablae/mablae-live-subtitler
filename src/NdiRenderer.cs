@@ -5,18 +5,22 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Threading;
 using System.Threading.Tasks;
-
 using SkiaSharp;
 
 namespace Mablae.LiveSubtitler
 {
     public class NdiRenderer
     {
-        
         private CancellationToken cancellationToken;
         private string partialText = "";
         private string translatedText = "";
-        private VideoFrame videoFrame;
+        private readonly VideoFrame videoFrame;
+        private readonly Font font;
+        private readonly RectangleF transpileRect;
+        private readonly RectangleF translationRect;
+        private Bitmap bmp;
+        private Graphics graphics;
+        private bool allowSending;
 
         public NdiRenderer(CancellationToken cancellationToken)
         {
@@ -24,64 +28,42 @@ namespace Mablae.LiveSubtitler
 
             // We are going to create a 1920x1080 16:9 frame at 29.97Hz, progressive (default).
             this.videoFrame = new VideoFrame(1920, 1080, (16.0f / 9.0f), 30000, 1001);
+
+            font = new Font(new FontFamily("Arial"), 36.0f, FontStyle.Regular, GraphicsUnit.Pixel);
+            transpileRect = new RectangleF(10, videoFrame.Height - 130, videoFrame.Width - 20, 120);
+            translationRect = new RectangleF(10, videoFrame.Height - 250, videoFrame.Width - 20, 120);
+
+            bmp = new Bitmap(videoFrame.Width, videoFrame.Height, videoFrame.Stride,
+                System.Drawing.Imaging.PixelFormat.Format32bppPArgb, videoFrame.BufferPtr);
+            graphics = Graphics.FromImage(bmp);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
         }
 
 
         public async Task<int> UpdatePartialText(string newPartialText)
         {
             partialText = newPartialText;
-            await DrawFrame();
+            DrawFrame();
 
             return 0;
         }
-        
+
         public async Task<int> UpdateTranslatedText(string updatedTranslationText)
         {
             translatedText = updatedTranslationText;
-            await DrawFrame();
+            DrawFrame();
 
             return 0;
         }
 
-        private async Task<int> DrawFrame()
+        private void DrawFrame()
         {
-            await Task.Run(() =>
-            {
-                // get a compatible bitmap and graphics context from our video frame.
-                // also sharing a using scope.
-                using (Bitmap bmp = new Bitmap(videoFrame.Width, videoFrame.Height, videoFrame.Stride,
-                    System.Drawing.Imaging.PixelFormat.Format32bppPArgb, videoFrame.BufferPtr))
-                using (Graphics graphics = Graphics.FromImage(bmp))
-                {
-                    graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            allowSending = false;
+            graphics.Clear(Color.Transparent);
+            graphics.DrawString(partialText, font, Brushes.White, transpileRect);
+            graphics.DrawString(translatedText, font, Brushes.YellowGreen, translationRect);
 
-                    // We'll use these later inside the loop
-                    StringFormat textFormat = new StringFormat();
-                    textFormat.Alignment = StringAlignment.Near;
-                    textFormat.LineAlignment = StringAlignment.Center;
-
-                    FontFamily fontFamily = new FontFamily("Arial");
-                    Font font = new Font(fontFamily, 36.0f, FontStyle.Regular, GraphicsUnit.Pixel);
-                    Pen outlinePen = new Pen(Color.Black, 1.0f);
-                    Pen thinOutlinePen = new Pen(Color.Black, 1.0f);
-
-
-                    // fill it with a lovely color
-                    graphics.Clear(Color.Transparent);
-
-                    RectangleF transpileRect = new RectangleF(10, videoFrame.Height - 130, videoFrame.Width - 20, 120);
-                    graphics.DrawString(partialText, font, Brushes.White, transpileRect);
-
-
-                    RectangleF translationRect =
-                        new RectangleF(10, videoFrame.Height - 250, videoFrame.Width - 20, 120);
-                    graphics.DrawString(translatedText, font, Brushes.YellowGreen, translationRect);
-                } // using bmp and graphics
-
-
-            });
-
-            return 0;
+            allowSending = true;
         }
 
         public async Task<int> Run()
@@ -97,7 +79,6 @@ namespace Mablae.LiveSubtitler
             // this will show up as a source named "Example" with all other settings at their defaults
             using (Sender sendInstance = new Sender("Example", true, false, null, failoverName))
             {
-
                 // We will send 10000 frames of video.
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -112,18 +93,16 @@ namespace Mablae.LiveSubtitler
                     }
                     else
                     {
-
                         // We now submit the frame. Note that this call will be clocked so that we end up submitting at exactly 29.97fps.
-                        sendInstance.Send(videoFrame);
+                        if (allowSending)
+                        {
+                            sendInstance.Send(videoFrame);
+                        }
                     }
-
                 } // using sendInstance
 
                 return 0;
             } // Main
-
-
         }
     }
-
 }

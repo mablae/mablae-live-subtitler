@@ -178,7 +178,7 @@ namespace Mablae.LiveSubtitler
             {
                 Task.Run(async() =>
                 {
-                    await ndiRenderer.UpdatePartialText(eventArgs.Translation);
+                    await ndiRenderer.UpdateTranslatedText(eventArgs.Translation);
                 });
             };
 
