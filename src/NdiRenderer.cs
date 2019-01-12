@@ -11,7 +11,9 @@ namespace Mablae.LiveSubtitler
 {
     public class NdiRenderer
     {
-        private CancellationToken cancellationToken;
+        
+        private static Object syncLock = new Object();
+        private readonly CancellationToken cancellationToken;
         private string partialText = "";
         private string translatedText = "";
         private readonly VideoFrame videoFrame;
@@ -20,7 +22,6 @@ namespace Mablae.LiveSubtitler
         private readonly RectangleF translationRect;
         private Bitmap bmp;
         private Graphics graphics;
-        private bool allowSending;
 
         public NdiRenderer(CancellationToken cancellationToken)
         {
@@ -58,12 +59,15 @@ namespace Mablae.LiveSubtitler
 
         private void DrawFrame()
         {
-            allowSending = false;
+            lock (syncLock)
+            {
             graphics.Clear(Color.Transparent);
             graphics.DrawString(partialText, font, Brushes.White, transpileRect);
             graphics.DrawString(translatedText, font, Brushes.YellowGreen, translationRect);
+                
+            }
 
-            allowSending = true;
+
         }
 
         public async Task<int> Run()
@@ -94,7 +98,7 @@ namespace Mablae.LiveSubtitler
                     else
                     {
                         // We now submit the frame. Note that this call will be clocked so that we end up submitting at exactly 29.97fps.
-                        if (allowSending)
+                        lock(syncLock)
                         {
                             sendInstance.Send(videoFrame);
                         }
